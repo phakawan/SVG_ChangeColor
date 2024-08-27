@@ -1,33 +1,73 @@
-<?php
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $target_dir = "uploads/";
-    $target_file = $target_dir . basename($_FILES["file"]["name"]);
-
-    // Check if file is an SVG
-    $fileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-    if ($fileType != "svg") {
-        echo "Sorry, only SVG files are allowed.";
-        exit;
-    }
-
-    // Upload file
-    if (move_uploaded_file($_FILES["file"]["tmp_name"], $target_file)) {
-        // Load SVG content
-        $svgContent = file_get_contents($target_file);
-
-        // Change colors
-        foreach ($_POST['colors'] as $originalColor => $newColor) {
-            $svgContent = str_replace('fill="' . $originalColor . '"', 'fill="' . $newColor . '"', $svgContent);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload SVG</title>
+    <style>
+        .color-picker {
+            margin: 10px 0;
         }
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <form id="uploadForm" action="upload.php" method="post" enctype="multipart/form-data">
+        <label for="file">Choose SVG file:</label>
+        <input type="file" name="file" id="file" accept=".svg">
+        <div id="colorPickers"></div>
+        <input type="submit" value="Upload and Change Colors">
+    </form>
+    <canvas id="svgCanvas" width="500" height="500"></canvas>
+    <script>
+        document.getElementById('file').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file && file.type === 'image/svg+xml') {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const parser = new DOMParser();
+                    const svgDoc = parser.parseFromString(e.target.result, 'image/svg+xml');
+                    const colors = new Set();
+                    svgDoc.querySelectorAll('[fill]').forEach(element => {
+                        colors.add(element.getAttribute('fill'));
+                    });
+                    const colorPickersDiv = document.getElementById('colorPickers');
+                    colorPickersDiv.innerHTML = '';
+                    colors.forEach(color => {
+                        const colorPicker = document.createElement('input');
+                        colorPicker.type = 'color';
+                        colorPicker.value = color;
+                        colorPicker.className = 'color-picker';
+                        colorPicker.dataset.originalColor = color;
+                        colorPickersDiv.appendChild(colorPicker);
 
-        // Save new SVG
-        $newFileName = $target_dir . 'colored_' . basename($_FILES["file"]["name"]);
-        file_put_contents($newFileName, $svgContent);
+                        colorPicker.addEventListener('input', function() {
+                            const newColor = this.value;
+                            svgDoc.querySelectorAll(`[fill="${this.dataset.originalColor}"]`).forEach(element => {
+                                element.setAttribute('fill', newColor);
+                            });
+                            this.dataset.originalColor = newColor;
+                            updateCanvas(svgDoc);
+                        });
+                    });
+                    updateCanvas(svgDoc);
+                };
+                reader.readAsText(file);
+            }
+        });
 
-        // Provide download link
-        echo "File uploaded and colors changed successfully. <a href='$newFileName'>Download here</a>";
-    } else {
-        echo "Sorry, there was an error uploading your file.";
-    }
-}
-?>
+        function updateCanvas(svgDoc) {
+            const canvas = document.getElementById('svgCanvas');
+            const ctx = canvas.getContext('2d');
+            const svgData = new XMLSerializer().serializeToString(svgDoc);
+            const img = new Image();
+            img.onload = function() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+        }
+    </script>
+</body>
+</html>
