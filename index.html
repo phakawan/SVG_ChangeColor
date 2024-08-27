@@ -1,33 +1,143 @@
-<?php
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $target_dir = "uploads/";
-    $target_file = $target_dir . basename($_FILES["file"]["name"]);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Color Changer</title>
+</head>
+<body>
+    <h1>SVG Color Changer</h1>
+    <input type="file" id="upload" accept=".svg">
+    <br><br>
+    <canvas id="canvas" width="500" height="500"></canvas>
+    <br><br>
+    <div id="colors"></div>
+    <button id="download">Download SVG</button>
 
-    // Check if file is an SVG
-    $fileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-    if ($fileType != "svg") {
-        echo "Sorry, only SVG files are allowed.";
-        exit;
-    }
+    <script>
+        const upload = document.getElementById('upload');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const download = document.getElementById('download');
+        const colorsDiv = document.getElementById('colors');
+        let svgElement;
+        let colors = new Map();
 
-    // Upload file
-    if (move_uploaded_file($_FILES["file"]["tmp_name"], $target_file)) {
-        // Load SVG content
-        $svgContent = file_get_contents($target_file);
+        upload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(e.target.result, 'image/svg+xml');
+                svgElement = svgDoc.documentElement;
+                extractColors();
+                drawSVG();
+            };
+            reader.readAsText(file);
+        });
 
-        // Change colors
-        foreach ($_POST['colors'] as $originalColor => $newColor) {
-            $svgContent = str_replace('fill="' . $originalColor . '"', 'fill="' . $newColor . '"', $svgContent);
+        download.addEventListener('click', () => {
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const blob = new Blob([svgData], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'colored.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
+
+        function drawSVG() {
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const img = new Image();
+            img.onload = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+                const x = (canvas.width / 2) - (img.width / 2) * scale;
+                const y = (canvas.height / 2) - (img.height / 2) * scale;
+                ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+            };
+            img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
         }
 
-        // Save new SVG
-        $newFileName = $target_dir . 'colored_' . basename($_FILES["file"]["name"]);
-        file_put_contents($newFileName, $svgContent);
+        function extractColors() {
+            colors.clear();
+            const elements = svgElement.querySelectorAll('*');
+            elements.forEach(element => {
+                const fill = element.getAttribute('fill');
+                const fullColor = convertToFullHex(fill);
+                if (isValidColor(fullColor) && !colors.has(fullColor)) {
+                    colors.set(fullColor, []);
+                }
+                if (isValidColor(fullColor)) {
+                    colors.get(fullColor).push(element);
+                }
+            });
 
-        // Provide download link
-        echo "File uploaded and colors changed successfully. <a href='$newFileName'>Download here</a>";
-    } else {
-        echo "Sorry, there was an error uploading your file.";
-    }
-}
-?>
+            const gradients = svgElement.querySelectorAll('linearGradient, radialGradient');
+            gradients.forEach(gradient => {
+                const stops = gradient.querySelectorAll('stop');
+                stops.forEach(stop => {
+                    const stopColor = stop.getAttribute('stop-color');
+                    const fullColor = convertToFullHex(stopColor);
+                    if (isValidColor(fullColor) && !colors.has(fullColor)) {
+                        colors.set(fullColor, []);
+                    }
+                    if (isValidColor(fullColor)) {
+                        colors.get(fullColor).push(stop);
+                    }
+                });
+            });
+
+            displayColors();
+        }
+
+        function convertToFullHex(color) {
+            if (color && color.length === 4 && color[0] === '#') {
+                return '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
+            }
+            return color;
+        }
+
+        function isValidColor(color) {
+            const hexColorPattern = /^#[0-9A-F]{6}$/i;
+            return hexColorPattern.test(color);
+        }
+
+        function displayColors() {
+            colorsDiv.innerHTML = '';
+            colors.forEach((elements, color) => {
+                const colorContainer = document.createElement('div');
+                colorContainer.style.display = 'flex';
+                colorContainer.style.alignItems = 'center';
+                colorContainer.style.marginBottom = '10px';
+
+                const colorPicker = document.createElement('input');
+                colorPicker.type = 'color';
+                colorPicker.value = color;
+                colorPicker.addEventListener('input', (event) => {
+                    const newColor = event.target.value;
+                    elements.forEach(element => {
+                        if (element.tagName === 'stop') {
+                            element.setAttribute('stop-color', newColor);
+                        } else {
+                            element.setAttribute('fill', newColor);
+                        }
+                    });
+                    colorCode.textContent = newColor;
+                    drawSVG();
+                });
+
+                const colorCode = document.createElement('span');
+                colorCode.textContent = color;
+                colorCode.style.marginLeft = '10px';
+
+                colorContainer.appendChild(colorPicker);
+                colorContainer.appendChild(colorCode);
+                colorsDiv.appendChild(colorContainer);
+            });
+        }
+    </script>
+</body>
+</html>
