@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload SVG</title>
+    <style>
+        .color-picker {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <form id="uploadForm" action="upload.php" method="post" enctype="multipart/form-data">
+        <label for="file">Choose SVG file:</label>
+        <input type="file" name="file" id="file" accept=".svg">
+        <input type="submit" value="Upload and Change Colors">
+    </form>
+    <div id="colorPickers"></div>
+    <script>
+        document.getElementById('file').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file && file.type === 'image/svg+xml') {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const parser = new DOMParser();
+                    const svgDoc = parser.parseFromString(e.target.result, 'image/svg+xml');
+                    const colors = new Set();
+                    svgDoc.querySelectorAll('[fill]').forEach(element => {
+                        colors.add(element.getAttribute('fill'));
+                    });
+                    const colorPickersDiv = document.getElementById('colorPickers');
+                    colorPickersDiv.innerHTML = '';
+                    colors.forEach(color => {
+                        const colorPicker = document.createElement('input');
+                        colorPicker.type = 'color';
+                        colorPicker.value = color;
+                        colorPicker.className = 'color-picker';
+                        colorPicker.dataset.originalColor = color;
+                        colorPickersDiv.appendChild(colorPicker);
+                    });
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        document.getElementById('uploadForm').addEventListener('submit', function(event) {
+            const colorPickers = document.querySelectorAll('.color-picker');
+            colorPickers.forEach(picker => {
+                const originalColor = picker.dataset.originalColor;
+                const newColor = picker.value;
+                const hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'colors[' + originalColor + ']';
+                hiddenInput.value = newColor;
+                event.target.appendChild(hiddenInput);
+            });
+        });
+    </script>
+</body>
+</html>
